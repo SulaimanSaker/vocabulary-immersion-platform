@@ -28,7 +28,6 @@ export type Length = "short" | "medium" | "long";
 export type TextFormat = "sentences" | "paragraphs" | "story" | "conversation" | "custom";
 
 export interface GenerateOptions {
-  count: number;
   theme: string;
   difficulty: Difficulty;
   length: Length;

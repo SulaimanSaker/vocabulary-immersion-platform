@@ -58,8 +58,8 @@ npm run dev
 - Web app: <http://localhost:5173>
 - API: <http://localhost:3000> (the Vite dev server proxies `/api` to it)
 
-Open the web app, add a few words, pick how many to include per passage, and hit
-**Generate passage**.
+Open the web app, add a few words, optionally check the ones you want to include, and hit
+**Generate passage**. (With nothing checked, it auto-picks words for you by spaced repetition.)
 
 ## How it works
 

@@ -8,7 +8,6 @@ import { PassageCard } from "./components/PassageCard";
 import { History } from "./components/History";
 
 const DEFAULT_OPTS: GenerateOptions = {
-  count: 5,
   theme: "",
   difficulty: "medium",
   length: "medium",

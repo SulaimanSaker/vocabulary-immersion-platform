@@ -54,19 +54,6 @@ export function Controls({
         </label>
 
         <label>
-          Words / passage
-          <input
-            type="number"
-            min={1}
-            max={15}
-            value={opts.count}
-            disabled={usingSelection}
-            title={usingSelection ? "Ignored while you have words selected" : undefined}
-            onChange={(e) => onChange({ ...opts, count: Number(e.target.value) })}
-          />
-        </label>
-
-        <label>
           Difficulty
           <select
             value={opts.difficulty}
