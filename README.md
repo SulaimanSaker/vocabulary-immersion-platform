@@ -9,6 +9,8 @@ glossary, and **spaced repetition** so the words you struggle with come back mor
 - **Frontend** — React + TypeScript + Vite.
 - **Listen** — each passage has a 🔊 player (Listen / Pause / Stop, speed and voice controls).
   It uses the browser's built-in speech synthesis, so it's free and makes no API calls.
+- **History** — every generated passage is saved; a History tab lets you re-open and re-read
+  past passages (kept to the most recent 100).
 - **Spaced repetition** — each word lives in a Leitner box (1–5). Low boxes and words you
   haven't seen in a while are weighted heavily when choosing what goes into the next
   passage. After reading you mark each word **Got it** (box up) or **Still learning**

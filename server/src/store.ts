@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import type { Database, ReviewResult, Word } from "./types.js";
+import type { Database, GlossaryEntry, HistoryEntry, ReviewResult, Word } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Persist alongside the project root (server/.. -> repo root).
@@ -15,6 +15,7 @@ const DB_PATH = process.env.VIP_DATA_FILE
 const MIN_BOX = 1;
 const MAX_BOX = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_HISTORY = 100;
 
 // Leitner review schedule: how long a word "rests" in each box before it's
 // due for review again. Lower boxes (less learned) come back sooner.
@@ -23,13 +24,17 @@ const REVIEW_INTERVAL_DAYS: Record<number, number> = { 1: 1, 2: 2, 3: 4, 4: 7, 5
 let db: Database = load();
 
 function load(): Database {
-  if (!existsSync(DB_PATH)) return { words: [] };
+  const empty: Database = { words: [], history: [] };
+  if (!existsSync(DB_PATH)) return empty;
   try {
-    const parsed = JSON.parse(readFileSync(DB_PATH, "utf8")) as Database;
-    if (!parsed || !Array.isArray(parsed.words)) return { words: [] };
-    return parsed;
+    const parsed = JSON.parse(readFileSync(DB_PATH, "utf8")) as Partial<Database>;
+    if (!parsed || !Array.isArray(parsed.words)) return empty;
+    return {
+      words: parsed.words,
+      history: Array.isArray(parsed.history) ? parsed.history : [],
+    };
   } catch {
-    return { words: [] };
+    return empty;
   }
 }
 
@@ -107,6 +112,39 @@ export function recordSeen(ids: string[]): void {
     changed = true;
   }
   if (changed) persist();
+}
+
+/** Save a generated passage to history (newest first, capped). Returns the stored entry. */
+export function addHistory(data: {
+  title: string;
+  passage: string;
+  glossary: GlossaryEntry[];
+  words: Word[];
+}): HistoryEntry {
+  const entry: HistoryEntry = {
+    id: randomUUID(),
+    title: data.title,
+    passage: data.passage,
+    glossary: data.glossary,
+    words: data.words,
+    createdAt: Date.now(),
+  };
+  db.history.unshift(entry);
+  if (db.history.length > MAX_HISTORY) db.history.length = MAX_HISTORY;
+  persist();
+  return entry;
+}
+
+export function getHistory(): HistoryEntry[] {
+  return db.history;
+}
+
+export function deleteHistory(id: string): boolean {
+  const before = db.history.length;
+  db.history = db.history.filter((h) => h.id !== id);
+  const removed = db.history.length < before;
+  if (removed) persist();
+  return removed;
 }
 
 /** When a word next becomes due, based on its box and last-seen time. */

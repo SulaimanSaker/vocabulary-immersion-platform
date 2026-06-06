@@ -4,7 +4,10 @@ import { dirname, resolve } from "node:path";
 import express from "express";
 import { generatePassage } from "./gemini.js";
 import {
+  addHistory,
   addWords,
+  deleteHistory,
+  getHistory,
   getStats,
   listWords,
   recordSeen,
@@ -39,6 +42,19 @@ app.get("/api/words", (_req, res) => {
 
 app.get("/api/stats", (_req, res) => {
   res.json(getStats());
+});
+
+app.get("/api/history", (_req, res) => {
+  res.json({ history: getHistory() });
+});
+
+app.delete("/api/history/:id", (req, res) => {
+  const removed = deleteHistory(req.params.id);
+  if (!removed) {
+    res.status(404).json({ error: "History entry not found." });
+    return;
+  }
+  res.json({ history: getHistory() });
 });
 
 app.post("/api/words", (req, res) => {
@@ -99,10 +115,14 @@ app.post("/api/generate", async (req, res) => {
 
     recordSeen(selected.map((w) => w.id));
 
-    res.json({
-      ...passage,
+    // Save to history and return the stored entry (with id + createdAt).
+    const entry = addHistory({
+      title: passage.title,
+      passage: passage.passage,
+      glossary: passage.glossary,
       words: selected, // includes ids so the client can render review buttons
     });
+    res.json(entry);
   } catch (err) {
     console.error("Generation failed:", err);
     res.status(502).json({

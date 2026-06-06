@@ -15,10 +15,12 @@ export interface GlossaryEntry {
 }
 
 export interface Passage {
+  id: string;
   title: string;
   passage: string;
   glossary: GlossaryEntry[];
   words: Word[];
+  createdAt: number;
 }
 
 export type Difficulty = "easy" | "medium" | "hard";

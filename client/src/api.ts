@@ -20,6 +20,14 @@ export function getStats() {
   return request<Stats>("/api/stats");
 }
 
+export function getHistory() {
+  return request<{ history: Passage[] }>("/api/history");
+}
+
+export function deleteHistory(id: string) {
+  return request<{ history: Passage[] }>(`/api/history/${id}`, { method: "DELETE" });
+}
+
 export function addWords(text: string) {
   return request<{ added: Word[]; words: Word[] }>("/api/words", {
     method: "POST",

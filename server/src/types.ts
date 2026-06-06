@@ -10,8 +10,18 @@ export interface Word {
   addedAt: number;
 }
 
+export interface HistoryEntry {
+  id: string;
+  title: string;
+  passage: string;
+  glossary: GlossaryEntry[];
+  words: Word[];
+  createdAt: number;
+}
+
 export interface Database {
   words: Word[];
+  history: HistoryEntry[];
 }
 
 export type ReviewResult = "got_it" | "still_learning";
