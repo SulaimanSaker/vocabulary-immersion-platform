@@ -177,6 +177,95 @@ body {
   gap: 16px;
 }
 
+/* ---- Dashboard ---- */
+.dashboard {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dash-progress {
+  display: flex;
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.dash-progress .bar {
+  display: block;
+  min-width: 4px;
+}
+
+.dash-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dash-legend .dot,
+.due-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dash-due {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.due-count {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.study-due {
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 8px 14px;
+}
+
+.study-due:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: #fff;
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+.words li.due {
+  border-color: var(--accent);
+}
+
+.due-dot {
+  background: var(--accent);
+  flex: none;
+}
+
 .controls {
   background: var(--panel);
   border: 1px solid var(--line);

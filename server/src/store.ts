@@ -6,11 +6,19 @@ import type { Database, ReviewResult, Word } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Persist alongside the project root (server/.. -> repo root).
-const DB_PATH = resolve(__dirname, "../../data.json");
+// Override with VIP_DATA_FILE to use a different file (e.g. for tests, so real
+// data isn't touched).
+const DB_PATH = process.env.VIP_DATA_FILE
+  ? resolve(process.env.VIP_DATA_FILE)
+  : resolve(__dirname, "../../data.json");
 
 const MIN_BOX = 1;
 const MAX_BOX = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Leitner review schedule: how long a word "rests" in each box before it's
+// due for review again. Lower boxes (less learned) come back sooner.
+const REVIEW_INTERVAL_DAYS: Record<number, number> = { 1: 1, 2: 2, 3: 4, 4: 7, 5: 14 };
 
 let db: Database = load();
 
@@ -101,6 +109,44 @@ export function recordSeen(ids: string[]): void {
   if (changed) persist();
 }
 
+/** When a word next becomes due, based on its box and last-seen time. */
+function dueAt(word: Word): number | null {
+  if (word.lastSeenAt === null) return null; // never seen -> due immediately
+  const days = REVIEW_INTERVAL_DAYS[word.box] ?? 1;
+  return word.lastSeenAt + days * DAY_MS;
+}
+
+function isDue(word: Word, now: number): boolean {
+  const due = dueAt(word);
+  return due === null || now >= due;
+}
+
+/** Per-word review status, for the dashboard. */
+export function wordStatus(word: Word, now = Date.now()): { isDue: boolean; dueAt: number | null } {
+  return { isDue: isDue(word, now), dueAt: dueAt(word) };
+}
+
+export interface Stats {
+  total: number;
+  byBox: Record<number, number>;
+  dueCount: number;
+  due: Word[];
+}
+
+/** Aggregate progress: count per Leitner box and which words are due now. */
+export function getStats(): Stats {
+  const now = Date.now();
+  const byBox: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  const due: Word[] = [];
+  for (const w of db.words) {
+    byBox[w.box] = (byBox[w.box] ?? 0) + 1;
+    if (isDue(w, now)) due.push(w);
+  }
+  // Neediest first: lowest box, then longest since last seen.
+  due.sort((a, b) => a.box - b.box || (a.lastSeenAt ?? 0) - (b.lastSeenAt ?? 0));
+  return { total: db.words.length, byBox, dueCount: due.length, due };
+}
+
 /**
  * Spaced-repetition weight for a word: lower Leitner boxes and words not seen
  * for a while score higher, so they resurface more often in new passages.
@@ -121,9 +167,13 @@ function weight(word: Word, now: number): number {
  * Weighted random sample (without replacement) of up to `count` words, biased
  * toward the words that most need practice.
  */
-export function selectWordsForPassage(count: number): Word[] {
+export function selectWordsForPassage(
+  count: number,
+  opts: { dueOnly?: boolean } = {},
+): Word[] {
   const now = Date.now();
-  const pool = db.words.map((w) => ({ word: w, weight: weight(w, now) }));
+  const candidates = opts.dueOnly ? db.words.filter((w) => isDue(w, now)) : db.words;
+  const pool = candidates.map((w) => ({ word: w, weight: weight(w, now) }));
   const picked: Word[] = [];
 
   const n = Math.min(count, pool.length);

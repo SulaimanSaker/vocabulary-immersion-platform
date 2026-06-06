@@ -30,3 +30,10 @@ export interface GenerateOptions {
   difficulty: Difficulty;
   length: Length;
 }
+
+export interface Stats {
+  total: number;
+  byBox: Record<number, number>;
+  dueCount: number;
+  due: Word[];
+}

@@ -1,4 +1,4 @@
-import type { GenerateOptions, Passage, ReviewResult, Word } from "./types";
+import type { GenerateOptions, Passage, ReviewResult, Stats, Word } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -14,6 +14,10 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 export function getWords() {
   return request<{ words: Word[] }>("/api/words");
+}
+
+export function getStats() {
+  return request<Stats>("/api/stats");
 }
 
 export function addWords(text: string) {
@@ -34,9 +38,9 @@ export function reviewWord(id: string, result: ReviewResult) {
   });
 }
 
-export function generatePassage(opts: GenerateOptions) {
+export function generatePassage(opts: GenerateOptions, dueOnly = false) {
   return request<Passage>("/api/generate", {
     method: "POST",
-    body: JSON.stringify(opts),
+    body: JSON.stringify({ ...opts, dueOnly }),
   });
 }

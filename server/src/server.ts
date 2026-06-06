@@ -5,6 +5,7 @@ import express from "express";
 import { generatePassage } from "./gemini.js";
 import {
   addWords,
+  getStats,
   listWords,
   recordSeen,
   removeWord,
@@ -34,6 +35,10 @@ app.get("/api/health", (_req, res) => {
 
 app.get("/api/words", (_req, res) => {
   res.json({ words: listWords() });
+});
+
+app.get("/api/stats", (_req, res) => {
+  res.json(getStats());
 });
 
 app.post("/api/words", (req, res) => {
@@ -77,10 +82,13 @@ app.post("/api/generate", async (req, res) => {
       : "medium";
     const length: Length = LENGTHS.includes(req.body?.length) ? req.body.length : "medium";
     const theme = typeof req.body?.theme === "string" ? req.body.theme : undefined;
+    const dueOnly = req.body?.dueOnly === true;
 
-    const selected = selectWordsForPassage(count);
+    const selected = selectWordsForPassage(count, { dueOnly });
     if (selected.length === 0) {
-      res.status(400).json({ error: "Add some words first." });
+      res.status(400).json({
+        error: dueOnly ? "No words are due for review right now." : "Add some words first.",
+      });
       return;
     }
 

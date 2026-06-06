@@ -3,13 +3,14 @@ import type { Word } from "../types";
 
 interface Props {
   words: Word[];
+  dueIds: Set<string>;
   onAdd: (text: string) => Promise<void>;
   onDelete: (id: string) => void;
 }
 
 const BOX_LABELS = ["", "new", "learning", "familiar", "strong", "mastered"];
 
-export function WordList({ words, onAdd, onDelete }: Props) {
+export function WordList({ words, dueIds, onAdd, onDelete }: Props) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -46,7 +47,8 @@ export function WordList({ words, onAdd, onDelete }: Props) {
       ) : (
         <ul className="words">
           {words.map((w) => (
-            <li key={w.id}>
+            <li key={w.id} className={dueIds.has(w.id) ? "due" : ""}>
+              {dueIds.has(w.id) && <span className="due-dot" title="Due for review" />}
               <span className="word-text">{w.text}</span>
               <span className={`box box-${w.box}`} title={`Seen ${w.timesSeen}×`}>
                 {BOX_LABELS[w.box]}

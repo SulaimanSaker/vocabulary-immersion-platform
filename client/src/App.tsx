@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import * as api from "./api";
-import type { GenerateOptions, Passage, ReviewResult, Word } from "./types";
+import type { GenerateOptions, Passage, ReviewResult, Stats, Word } from "./types";
 import { WordList } from "./components/WordList";
 import { Controls } from "./components/Controls";
 import { PassageView } from "./components/PassageView";
 import { PassageAudio } from "./components/PassageAudio";
+import { Dashboard } from "./components/Dashboard";
 
 const DEFAULT_OPTS: GenerateOptions = {
   count: 5,
@@ -15,34 +16,41 @@ const DEFAULT_OPTS: GenerateOptions = {
 
 export default function App() {
   const [words, setWords] = useState<Word[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
   const [opts, setOpts] = useState<GenerateOptions>(DEFAULT_OPTS);
   const [passage, setPassage] = useState<Passage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reviewed, setReviewed] = useState<Record<string, ReviewResult>>({});
 
+  async function refresh() {
+    const [w, s] = await Promise.all([api.getWords(), api.getStats()]);
+    setWords(w.words);
+    setStats(s);
+  }
+
   useEffect(() => {
-    api.getWords().then((r) => setWords(r.words)).catch((e) => setError(e.message));
+    refresh().catch((e) => setError(e.message));
   }, []);
 
   async function handleAdd(text: string) {
-    const r = await api.addWords(text);
-    setWords(r.words);
+    await api.addWords(text);
+    await refresh();
   }
 
   async function handleDelete(id: string) {
-    const r = await api.deleteWord(id);
-    setWords(r.words);
+    await api.deleteWord(id);
+    await refresh();
   }
 
-  async function handleGenerate() {
+  async function runGenerate(dueOnly: boolean) {
     setLoading(true);
     setError(null);
     setReviewed({});
     try {
-      const result = await api.generatePassage(opts);
+      const result = await api.generatePassage(opts, dueOnly);
       setPassage(result);
-      setWords((prev) => mergeSeen(prev, result.words));
+      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
@@ -52,25 +60,31 @@ export default function App() {
 
   async function handleReview(id: string, result: ReviewResult) {
     setReviewed((prev) => ({ ...prev, [id]: result }));
-    const r = await api.reviewWord(id, result);
-    setWords(r.words);
+    await api.reviewWord(id, result);
+    await refresh();
   }
+
+  const dueIds = new Set((stats?.due ?? []).map((w) => w.id));
 
   return (
     <div className="app">
       <header className="topbar">
         <h1>📖 Vocabulary Immersion</h1>
-        <p>Add words you want to remember. Claude keeps writing fresh passages that use them.</p>
+        <p>Add words you want to remember. The app keeps writing fresh passages that use them.</p>
       </header>
 
       <div className="layout">
-        <WordList words={words} onAdd={handleAdd} onDelete={handleDelete} />
+        <WordList words={words} dueIds={dueIds} onAdd={handleAdd} onDelete={handleDelete} />
 
         <main className="reader">
+          {stats && (
+            <Dashboard stats={stats} onStudyDue={() => runGenerate(true)} loading={loading} />
+          )}
+
           <Controls
             opts={opts}
             onChange={setOpts}
-            onGenerate={handleGenerate}
+            onGenerate={() => runGenerate(false)}
             loading={loading}
             disabled={words.length === 0}
           />
@@ -132,10 +146,4 @@ export default function App() {
       </div>
     </div>
   );
-}
-
-/** Reflect the updated seen-counts returned with a freshly generated passage. */
-function mergeSeen(prev: Word[], used: Word[]): Word[] {
-  const byId = new Map(used.map((w) => [w.id, w]));
-  return prev.map((w) => byId.get(w.id) ?? w);
 }
