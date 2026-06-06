@@ -40,10 +40,14 @@ export interface GeneratedPassage {
 
 export type Difficulty = "easy" | "medium" | "hard";
 export type Length = "short" | "medium" | "long";
+export type TextFormat = "sentences" | "paragraphs" | "story" | "conversation" | "custom";
 
 export interface GenerateOptions {
   count: number;
   theme?: string;
   difficulty: Difficulty;
   length: Length;
+  format: TextFormat;
+  /** Free-text description used when format is "custom" (e.g. "a programming article"). */
+  customType?: string;
 }

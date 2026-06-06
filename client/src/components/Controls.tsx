@@ -1,4 +1,4 @@
-import type { Difficulty, GenerateOptions, Length } from "../types";
+import type { Difficulty, GenerateOptions, Length, TextFormat } from "../types";
 
 interface Props {
   opts: GenerateOptions;
@@ -12,6 +12,21 @@ interface Props {
 const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
 const LENGTHS: Length[] = ["short", "medium", "long"];
 
+const FORMATS: { value: TextFormat; label: string }[] = [
+  { value: "sentences", label: "Sentences" },
+  { value: "paragraphs", label: "Paragraphs" },
+  { value: "story", label: "Story" },
+  { value: "conversation", label: "Conversation" },
+  { value: "custom", label: "Personalized" },
+];
+
+const PERSONALIZED_PRESETS = [
+  "Programming article",
+  "Business story",
+  "Science explanation",
+  "Historical event",
+];
+
 export function Controls({
   opts,
   onChange,
@@ -24,6 +39,20 @@ export function Controls({
   return (
     <div className="controls">
       <div className="controls-row">
+        <label>
+          Format
+          <select
+            value={opts.format}
+            onChange={(e) => onChange({ ...opts, format: e.target.value as TextFormat })}
+          >
+            {FORMATS.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <label>
           Words / passage
           <input
@@ -65,6 +94,32 @@ export function Controls({
           </select>
         </label>
       </div>
+
+      {opts.format === "custom" && (
+        <div className="personalized">
+          <label>
+            What kind of content?
+            <input
+              type="text"
+              value={opts.customType}
+              placeholder="e.g. a programming article, a business story, a science explanation…"
+              onChange={(e) => onChange({ ...opts, customType: e.target.value })}
+            />
+          </label>
+          <div className="preset-chips">
+            {PERSONALIZED_PRESETS.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                className={opts.customType === preset ? "chip active" : "chip"}
+                onClick={() => onChange({ ...opts, customType: preset })}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <label className="theme">
         Theme (optional)

@@ -1,5 +1,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import type { Difficulty, GenerateOptions, GeneratedPassage, Length } from "./types.js";
+import type {
+  Difficulty,
+  GenerateOptions,
+  GeneratedPassage,
+  Length,
+  TextFormat,
+} from "./types.js";
 
 const MODEL = "gemini-2.5-flash";
 
@@ -52,6 +58,22 @@ const LENGTH_GUIDANCE: Record<Length, string> = {
   long: "about 450-600 words (four or five paragraphs)",
 };
 
+// For the "sentences" format, length means number of sentences instead of words.
+const SENTENCE_COUNT: Record<Length, string> = {
+  short: "about 5-7 sentences",
+  medium: "about 8-12 sentences",
+  long: "about 14-20 sentences",
+};
+
+const FORMAT_GUIDANCE: Record<Exclude<TextFormat, "custom">, string> = {
+  sentences:
+    "Write a set of standalone example sentences (NOT a connected narrative). Give at least one clear sentence per target word, each showing the word in natural use. Put each sentence on its own line.",
+  paragraphs: "Write one or more cohesive paragraphs of descriptive or expository prose.",
+  story: "Write an engaging short story with a setting, characters, and a small arc.",
+  conversation:
+    "Write a natural conversation between two or more named speakers. Put each line on its own line in the form 'Name: what they say.'",
+};
+
 const DIFFICULTY_GUIDANCE: Record<Difficulty, string> = {
   easy: "clear, everyday English at roughly a CEFR B1 level; keep sentences simple",
   medium: "natural, fluent English at roughly a CEFR B2-C1 level",
@@ -62,7 +84,7 @@ const SYSTEM_PROMPT = `You are the writing engine for a vocabulary-immersion app
 
 Rules:
 - Use every target word at least once. You may use a word more than once if it reads naturally.
-- Make the passage coherent and enjoyable to read — a real little story, scene, or essay, not a list of disconnected sentences.
+- Follow the requested format and reading level, and make it natural and engaging for that format.
 - Wrap EVERY occurrence of a target word in double square brackets, including inflected or derived forms actually used (e.g. if the target is "ephemeral" and you write "ephemerally", output [[ephemerally]]).
 - Do NOT bracket any non-target words.
 - The glossary must contain exactly one entry per target word, defined as used in the passage.
@@ -73,16 +95,29 @@ export async function generatePassage(
   opts: GenerateOptions,
 ): Promise<GeneratedPassage> {
   const themeLine = opts.theme?.trim()
-    ? `Theme to build the passage around: ${opts.theme.trim()}.`
+    ? `Theme to build it around: ${opts.theme.trim()}.`
     : "Choose any vivid, fresh theme you like (vary it from passage to passage).";
+
+  const formatLine =
+    opts.format === "custom"
+      ? `Format: write a piece of the following kind — ${
+          opts.customType?.trim() || "an informative article"
+        }. Make it read like a genuine example of that.`
+      : `Format: ${FORMAT_GUIDANCE[opts.format]}`;
+
+  const lengthLine =
+    opts.format === "sentences"
+      ? `Length: ${SENTENCE_COUNT[opts.length]}.`
+      : `Length: ${LENGTH_GUIDANCE[opts.length]}.`;
 
   const userPrompt = `Target words: ${targetWords.join(", ")}.
 
+${formatLine}
 ${themeLine}
-Length: ${LENGTH_GUIDANCE[opts.length]}.
+${lengthLine}
 Reading level: ${DIFFICULTY_GUIDANCE[opts.difficulty]}.
 
-Write the passage now.`;
+Write it now.`;
 
   const response = await getClient().models.generateContent({
     model: MODEL,

@@ -445,6 +445,48 @@ body {
   width: 100%;
 }
 
+.personalized {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.personalized input {
+  width: 100%;
+  font: inherit;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 4px 11px;
+}
+
+.chip:hover {
+  border-color: var(--accent);
+}
+
+.chip.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .generate {
   background: var(--accent);
   color: #fff;

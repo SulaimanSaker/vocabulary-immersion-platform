@@ -12,6 +12,8 @@ const DEFAULT_OPTS: GenerateOptions = {
   theme: "",
   difficulty: "medium",
   length: "medium",
+  format: "paragraphs",
+  customType: "",
 };
 
 type View = "read" | "history";

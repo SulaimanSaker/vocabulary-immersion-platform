@@ -16,7 +16,7 @@ import {
   reviewWord,
   selectWordsForPassage,
 } from "./store.js";
-import type { Difficulty, Length, ReviewResult } from "./types.js";
+import type { Difficulty, Length, ReviewResult, TextFormat } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, "../../.env") });
@@ -32,6 +32,7 @@ app.use(express.json());
 
 const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
 const LENGTHS: Length[] = ["short", "medium", "long"];
+const FORMATS: TextFormat[] = ["sentences", "paragraphs", "story", "conversation", "custom"];
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, hasApiKey: Boolean(process.env.GEMINI_API_KEY) });
@@ -99,6 +100,8 @@ app.post("/api/generate", async (req, res) => {
       : "medium";
     const length: Length = LENGTHS.includes(req.body?.length) ? req.body.length : "medium";
     const theme = typeof req.body?.theme === "string" ? req.body.theme : undefined;
+    const format: TextFormat = FORMATS.includes(req.body?.format) ? req.body.format : "paragraphs";
+    const customType = typeof req.body?.customType === "string" ? req.body.customType : undefined;
     const dueOnly = req.body?.dueOnly === true;
     const wordIds: string[] = Array.isArray(req.body?.wordIds)
       ? req.body.wordIds.filter((x: unknown): x is string => typeof x === "string")
@@ -124,7 +127,7 @@ app.post("/api/generate", async (req, res) => {
 
     const passage = await generatePassage(
       selected.map((w) => w.text),
-      { count, difficulty, length, theme },
+      { count, difficulty, length, theme, format, customType },
     );
 
     recordSeen(selected.map((w) => w.id));

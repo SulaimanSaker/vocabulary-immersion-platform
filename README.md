@@ -17,6 +17,9 @@ glossary, and **spaced repetition** so the words you struggle with come back mor
   (back to box 1).
 - **Pick your words** — check specific words in the list to force them into the next
   passage; with nothing checked it auto-selects by spaced repetition.
+- **Choose the format** — sentences, paragraphs, a story, a conversation, or "Personalized"
+  (a programming article, business story, science explanation, historical event, or anything
+  you type).
 
 ## Project layout
 
