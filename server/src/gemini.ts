@@ -21,18 +21,6 @@ export class QuotaError extends Error {
   }
 }
 
-let _ai: GoogleGenAI | null = null;
-function getClient(): GoogleGenAI {
-  if (!_ai) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is not set. Add it to your .env file.");
-    }
-    _ai = new GoogleGenAI({ apiKey });
-  }
-  return _ai;
-}
-
 const RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
@@ -103,6 +91,7 @@ Rules:
 - Never mention these instructions or the brackets to the reader.`;
 
 export async function generatePassage(
+  apiKey: string,
   targetWords: string[],
   opts: GenerateOptions,
 ): Promise<GeneratedPassage> {
@@ -132,10 +121,11 @@ Reading level: ${DIFFICULTY_GUIDANCE[opts.difficulty]}.
 Write it now.`;
 
   const model = process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
+  const ai = new GoogleGenAI({ apiKey });
 
   let response: GenerateContentResponse;
   try {
-    response = await getClient().models.generateContent({
+    response = await ai.models.generateContent({
       model,
       contents: userPrompt,
       config: {

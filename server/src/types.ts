@@ -19,9 +19,29 @@ export interface HistoryEntry {
   createdAt: number;
 }
 
-export interface Database {
+export interface User {
+  id: string;
+  email: string;
+  passwordHash: string;
+  createdAt: number;
+}
+
+export interface UserData {
   words: Word[];
   history: HistoryEntry[];
+}
+
+export interface Database {
+  users: User[];
+  /** Per-user words + history, keyed by user id. */
+  data: Record<string, UserData>;
+}
+
+export interface Stats {
+  total: number;
+  byBox: Record<number, number>;
+  dueCount: number;
+  due: Word[];
 }
 
 export type ReviewResult = "got_it" | "still_learning";
@@ -43,7 +63,6 @@ export type Length = "short" | "medium" | "long";
 export type TextFormat = "sentences" | "paragraphs" | "story" | "conversation" | "custom";
 
 export interface GenerateOptions {
-  count: number;
   theme?: string;
   difficulty: Difficulty;
   length: Length;

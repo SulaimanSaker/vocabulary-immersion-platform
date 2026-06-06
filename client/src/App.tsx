@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import * as api from "./api";
-import type { GenerateOptions, Passage, ReviewResult, Stats, Word } from "./types";
+import type { GenerateOptions, Passage, ReviewResult, Stats, User, Word } from "./types";
 import { WordList } from "./components/WordList";
 import { Controls } from "./components/Controls";
 import { Dashboard } from "./components/Dashboard";
 import { PassageCard } from "./components/PassageCard";
 import { History } from "./components/History";
+import { AuthScreen } from "./components/AuthScreen";
+import { Settings } from "./components/Settings";
 
 const DEFAULT_OPTS: GenerateOptions = {
   theme: "",
@@ -15,9 +17,13 @@ const DEFAULT_OPTS: GenerateOptions = {
   customType: "",
 };
 
+const KEY_STORAGE = "vip_gemini_key";
 type View = "read" | "history";
 
 export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
   const [words, setWords] = useState<Word[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [history, setHistory] = useState<Passage[]>([]);
@@ -28,35 +34,56 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem(KEY_STORAGE) ?? "");
+  const [showSettings, setShowSettings] = useState(false);
+
+  useEffect(() => {
+    api.getMe().then((u) => {
+      setUser(u);
+      setAuthChecked(true);
+      if (u) refresh().catch((e) => setError(e.message));
+    });
+  }, []);
+
   async function refresh() {
     const [w, s, h] = await Promise.all([api.getWords(), api.getStats(), api.getHistory()]);
     setWords(w.words);
     setStats(s);
     setHistory(h.history);
-    // Drop any selected ids that no longer exist.
     const ids = new Set(w.words.map((x) => x.id));
     setSelected((prev) => new Set([...prev].filter((id) => ids.has(id))));
   }
 
-  function toggleWord(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  function selectAll() {
-    setSelected(new Set(words.map((w) => w.id)));
-  }
-
-  function clearSelection() {
-    setSelected(new Set());
-  }
-
-  useEffect(() => {
+  function onAuthed(u: User) {
+    setUser(u);
     refresh().catch((e) => setError(e.message));
-  }, []);
+  }
+
+  async function handleLogout() {
+    await api.logout().catch(() => {});
+    setUser(null);
+    setWords([]);
+    setStats(null);
+    setHistory([]);
+    setPassage(null);
+    setSelected(new Set());
+    setView("read");
+  }
+
+  function saveKey(key: string) {
+    setApiKey(key);
+    if (key) localStorage.setItem(KEY_STORAGE, key);
+    else localStorage.removeItem(KEY_STORAGE);
+  }
+
+  function handleAuthError(e: unknown): boolean {
+    const msg = e instanceof Error ? e.message : "";
+    if (/signed in|session expired/i.test(msg)) {
+      setUser(null);
+      return true;
+    }
+    return false;
+  }
 
   async function handleAdd(text: string) {
     await api.addWords(text);
@@ -69,17 +96,21 @@ export default function App() {
   }
 
   async function runGenerate(dueOnly: boolean) {
+    if (!apiKey) {
+      setError("Add your Gemini API key in Settings first.");
+      setShowSettings(true);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      // Study-due ignores manual selection; normal generate uses it (if any).
       const wordIds = dueOnly ? [] : Array.from(selected);
-      const result = await api.generatePassage(opts, dueOnly, wordIds);
+      const result = await api.generatePassage(opts, dueOnly, wordIds, apiKey);
       setPassage(result);
       setView("read");
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
+      if (!handleAuthError(e)) setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
       setLoading(false);
     }
@@ -100,14 +131,50 @@ export default function App() {
     setHistory(r.history);
   }
 
+  function toggleWord(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  if (!authChecked) {
+    return <div className="splash">Loading…</div>;
+  }
+
+  if (!user) {
+    return <AuthScreen onAuthed={onAuthed} />;
+  }
+
   const dueIds = new Set((stats?.due ?? []).map((w) => w.id));
 
   return (
     <div className="app">
       <header className="topbar">
-        <h1>📖 Vocabulary Immersion</h1>
-        <p>Add words you want to remember. The app keeps writing fresh passages that use them.</p>
+        <div>
+          <h1>📖 Vocabulary Immersion</h1>
+          <p>Add words you want to remember. The app keeps writing fresh passages that use them.</p>
+        </div>
+        <div className="topbar-actions">
+          <span className="who" title={user.email}>
+            {user.email}
+          </span>
+          <button className="ghost" onClick={() => setShowSettings(true)}>
+            ⚙ Settings{!apiKey && <span className="needs-key" title="No API key set"> ●</span>}
+          </button>
+          <button className="ghost" onClick={handleLogout}>
+            Log out
+          </button>
+        </div>
       </header>
+
+      {!apiKey && (
+        <div className="key-banner">
+          Add your free Gemini API key in <strong>⚙ Settings</strong> to start generating passages.
+        </div>
+      )}
 
       <div className="layout">
         <WordList
@@ -115,18 +182,15 @@ export default function App() {
           dueIds={dueIds}
           selected={selected}
           onToggle={toggleWord}
-          onSelectAll={selectAll}
-          onClearSelection={clearSelection}
+          onSelectAll={() => setSelected(new Set(words.map((w) => w.id)))}
+          onClearSelection={() => setSelected(new Set())}
           onAdd={handleAdd}
           onDelete={handleDelete}
         />
 
         <main className="reader">
           <nav className="tabs">
-            <button
-              className={view === "read" ? "tab active" : "tab"}
-              onClick={() => setView("read")}
-            >
+            <button className={view === "read" ? "tab active" : "tab"} onClick={() => setView("read")}>
               Read
             </button>
             <button
@@ -171,6 +235,10 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {showSettings && (
+        <Settings apiKey={apiKey} onSave={saveKey} onClose={() => setShowSettings(false)} />
+      )}
     </div>
   );
 }
