@@ -7,6 +7,8 @@ glossary, and **spaced repetition** so the words you struggle with come back mor
 - **Backend** — Node + Express + Google's Gemini API (`gemini-2.5-flash`, free tier), words
   and review state stored in a local `data.json` (no database to set up).
 - **Frontend** — React + TypeScript + Vite.
+- **Listen** — each passage has a 🔊 player (Listen / Pause / Stop, speed and voice controls).
+  It uses the browser's built-in speech synthesis, so it's free and makes no API calls.
 - **Spaced repetition** — each word lives in a Leitner box (1–5). Low boxes and words you
   haven't seen in a while are weighted heavily when choosing what goes into the next
   passage. After reading you mark each word **Got it** (box up) or **Still learning**

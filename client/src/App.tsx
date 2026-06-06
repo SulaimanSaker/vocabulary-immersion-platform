@@ -4,6 +4,7 @@ import type { GenerateOptions, Passage, ReviewResult, Word } from "./types";
 import { WordList } from "./components/WordList";
 import { Controls } from "./components/Controls";
 import { PassageView } from "./components/PassageView";
+import { PassageAudio } from "./components/PassageAudio";
 
 const DEFAULT_OPTS: GenerateOptions = {
   count: 5,
@@ -86,7 +87,10 @@ export default function App() {
 
           {passage && (
             <article className="passage">
-              <h2>{passage.title}</h2>
+              <div className="passage-header">
+                <h2>{passage.title}</h2>
+                <PassageAudio text={passage.passage} />
+              </div>
               <PassageView text={passage.passage} />
 
               <section className="glossary">
