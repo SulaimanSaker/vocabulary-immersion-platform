@@ -1,0 +1,17 @@
+{
+  "name": "vocabulary-immersion-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Feed it English words; Claude keeps generating reading passages that weave them in, with spaced repetition to help you remember them.",
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:server dev:client",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "install:all": "npm install && npm --prefix server install && npm --prefix client install",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server run start"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
+  }
+}

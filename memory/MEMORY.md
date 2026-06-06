@@ -1,0 +1,1 @@
+- [Frontend stack preference](stack-preference-frontend.md) — user prefers React + TypeScript + Vite for web frontends
