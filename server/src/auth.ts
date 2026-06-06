@@ -41,7 +41,8 @@ export function setSessionCookie(res: Response, userId: string): void {
     httpOnly: true,
     sameSite: "lax",
     maxAge: TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
-    // secure: true in production behind HTTPS — left off for local http dev.
+    // Require HTTPS in production (Azure terminates TLS; trust proxy is set on the app).
+    secure: process.env.NODE_ENV === "production",
   });
 }
 

@@ -1,23 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-import type {
-  Database,
-  GlossaryEntry,
-  HistoryEntry,
-  ReviewResult,
-  Stats,
-  User,
-  UserData,
-  Word,
-} from "./types.js";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-// Override with VIP_DATA_FILE to use a different file (e.g. for tests).
-const DB_PATH = process.env.VIP_DATA_FILE
-  ? resolve(process.env.VIP_DATA_FILE)
-  : resolve(__dirname, "../../data.json");
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { createClient, type Client, type Row } from "@libsql/client";
+import type { GlossaryEntry, HistoryEntry, ReviewResult, Stats, User, Word } from "./types.js";
 
 const MIN_BOX = 1;
 const MAX_BOX = 5;
@@ -27,76 +12,160 @@ const MAX_HISTORY = 100;
 // Leitner review schedule: days a word rests in each box before it's due again.
 const REVIEW_INTERVAL_DAYS: Record<number, number> = { 1: 1, 2: 2, 3: 4, 4: 7, 5: 14 };
 
-let db: Database = load();
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS words (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  box INTEGER NOT NULL,
+  times_seen INTEGER NOT NULL,
+  last_seen_at INTEGER,
+  added_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_words_user ON words(user_id);
+CREATE TABLE IF NOT EXISTS history (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  passage TEXT NOT NULL,
+  glossary TEXT NOT NULL,
+  words TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_history_user ON history(user_id);
+`;
 
-function load(): Database {
-  const empty: Database = { users: [], data: {} };
-  if (!existsSync(DB_PATH)) return empty;
+// Lazy, read after dotenv has loaded. Local default is a relative file (avoids
+// Windows absolute-path file-URL quirks); on Azure set VIP_DB_FILE=/home/data/data.db.
+function dbUrl(): string {
+  const f = process.env.VIP_DB_FILE?.trim();
+  if (f) return f.startsWith("file:") ? f : `file:${f}`;
+  return "file:./data.db";
+}
+
+// Make sure the parent directory of an explicit DB path exists (e.g. Azure's /home/data).
+function ensureDir(): void {
+  const f = process.env.VIP_DB_FILE?.trim();
+  if (!f) return;
+  const path = f.startsWith("file:") ? f.slice("file:".length) : f;
   try {
-    const parsed = JSON.parse(readFileSync(DB_PATH, "utf8")) as Partial<Database>;
-    if (!parsed || !Array.isArray(parsed.users) || typeof parsed.data !== "object" || !parsed.data) {
-      return empty;
-    }
-    return { users: parsed.users, data: parsed.data as Record<string, UserData> };
+    mkdirSync(dirname(path), { recursive: true });
   } catch {
-    return empty;
+    /* ignore — createClient will surface a clear error if it truly can't open */
   }
 }
 
-function persist(): void {
-  writeFileSync(DB_PATH, JSON.stringify(db, null, 2), "utf8");
+let ready: Promise<Client> | null = null;
+function getDb(): Promise<Client> {
+  if (!ready) {
+    ready = (async () => {
+      ensureDir();
+      const client = createClient({ url: dbUrl() });
+      await client.executeMultiple(SCHEMA);
+      return client;
+    })();
+  }
+  return ready;
 }
 
-/** Get (creating if needed) the per-user data bucket. */
-function bucket(userId: string): UserData {
-  let data = db.data[userId];
-  if (!data) {
-    data = { words: [], history: [] };
-    db.data[userId] = data;
-  }
-  return data;
+// ---- Row mappers ----
+
+function toWord(r: Row): Word {
+  return {
+    id: String(r.id),
+    text: String(r.text),
+    box: Number(r.box),
+    timesSeen: Number(r.times_seen),
+    lastSeenAt: r.last_seen_at === null ? null : Number(r.last_seen_at),
+    addedAt: Number(r.added_at),
+  };
+}
+
+function toHistory(r: Row): HistoryEntry {
+  return {
+    id: String(r.id),
+    title: String(r.title),
+    passage: String(r.passage),
+    glossary: JSON.parse(String(r.glossary)) as GlossaryEntry[],
+    words: JSON.parse(String(r.words)) as Word[],
+    createdAt: Number(r.created_at),
+  };
+}
+
+function toUser(r: Row): User {
+  return {
+    id: String(r.id),
+    email: String(r.email),
+    passwordHash: String(r.password_hash),
+    createdAt: Number(r.created_at),
+  };
 }
 
 // ---- Users ----
 
-export function createUser(email: string, passwordHash: string): User {
+export async function createUser(email: string, passwordHash: string): Promise<User> {
+  const db = await getDb();
   const user: User = {
     id: randomUUID(),
     email: email.trim().toLowerCase(),
     passwordHash,
     createdAt: Date.now(),
   };
-  db.users.push(user);
-  db.data[user.id] = { words: [], history: [] };
-  persist();
+  await db.execute({
+    sql: "INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
+    args: [user.id, user.email, user.passwordHash, user.createdAt],
+  });
   return user;
 }
 
-export function getUserByEmail(email: string): User | undefined {
-  const key = email.trim().toLowerCase();
-  return db.users.find((u) => u.email === key);
+export async function getUserByEmail(email: string): Promise<User | undefined> {
+  const db = await getDb();
+  const rs = await db.execute({
+    sql: "SELECT * FROM users WHERE email = ?",
+    args: [email.trim().toLowerCase()],
+  });
+  return rs.rows[0] ? toUser(rs.rows[0]) : undefined;
 }
 
-export function getUserById(id: string): User | undefined {
-  return db.users.find((u) => u.id === id);
+export async function getUserById(id: string): Promise<User | undefined> {
+  const db = await getDb();
+  const rs = await db.execute({ sql: "SELECT * FROM users WHERE id = ?", args: [id] });
+  return rs.rows[0] ? toUser(rs.rows[0]) : undefined;
 }
 
 // ---- Words ----
 
-export function listWords(userId: string): Word[] {
-  return [...bucket(userId).words].sort((a, b) => a.box - b.box || b.addedAt - a.addedAt);
+export async function listWords(userId: string): Promise<Word[]> {
+  const db = await getDb();
+  const rs = await db.execute({
+    sql: "SELECT * FROM words WHERE user_id = ? ORDER BY box ASC, added_at DESC",
+    args: [userId],
+  });
+  return rs.rows.map(toWord);
 }
 
-export function addWords(userId: string, raw: string): Word[] {
-  const words = bucket(userId).words;
+export async function addWords(userId: string, raw: string): Promise<Word[]> {
+  const db = await getDb();
   const incoming = raw
     .split(/[\n,]+/)
     .map((w) => w.trim())
     .filter(Boolean);
+  if (incoming.length === 0) return [];
 
-  const existing = new Set(words.map((w) => w.text.toLowerCase()));
+  const existingRs = await db.execute({
+    sql: "SELECT lower(text) AS t FROM words WHERE user_id = ?",
+    args: [userId],
+  });
+  const existing = new Set(existingRs.rows.map((r) => String(r.t)));
+
   const added: Word[] = [];
-
+  const stmts = [];
   for (const text of incoming) {
     const key = text.toLowerCase();
     if (existing.has(key)) continue;
@@ -109,26 +178,34 @@ export function addWords(userId: string, raw: string): Word[] {
       lastSeenAt: null,
       addedAt: Date.now(),
     };
-    words.push(word);
     added.push(word);
+    stmts.push({
+      sql: "INSERT INTO words (id, user_id, text, box, times_seen, last_seen_at, added_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      args: [word.id, userId, word.text, word.box, word.timesSeen, word.lastSeenAt, word.addedAt],
+    });
   }
-
-  if (added.length) persist();
+  if (stmts.length) await db.batch(stmts, "write");
   return added;
 }
 
-export function removeWord(userId: string, id: string): boolean {
-  const data = bucket(userId);
-  const before = data.words.length;
-  data.words = data.words.filter((w) => w.id !== id);
-  const removed = data.words.length < before;
-  if (removed) persist();
-  return removed;
+export async function removeWord(userId: string, id: string): Promise<boolean> {
+  const db = await getDb();
+  const rs = await db.execute({
+    sql: "DELETE FROM words WHERE id = ? AND user_id = ?",
+    args: [id, userId],
+  });
+  return rs.rowsAffected > 0;
 }
 
-/** Resolve word ids to Word objects for this user, preserving order, skipping unknown/dupes. */
-export function getWordsByIds(userId: string, ids: string[]): Word[] {
-  const byId = new Map(bucket(userId).words.map((w) => [w.id, w]));
+export async function getWordsByIds(userId: string, ids: string[]): Promise<Word[]> {
+  if (ids.length === 0) return [];
+  const db = await getDb();
+  const placeholders = ids.map(() => "?").join(", ");
+  const rs = await db.execute({
+    sql: `SELECT * FROM words WHERE user_id = ? AND id IN (${placeholders})`,
+    args: [userId, ...ids],
+  });
+  const byId = new Map(rs.rows.map((r) => [String(r.id), toWord(r)]));
   const seen = new Set<string>();
   const result: Word[] = [];
   for (const id of ids) {
@@ -142,26 +219,37 @@ export function getWordsByIds(userId: string, ids: string[]): Word[] {
   return result;
 }
 
-export function reviewWord(userId: string, id: string, result: ReviewResult): Word | null {
-  const word = bucket(userId).words.find((w) => w.id === id);
-  if (!word) return null;
+export async function reviewWord(
+  userId: string,
+  id: string,
+  result: ReviewResult,
+): Promise<Word | null> {
+  const db = await getDb();
+  const rs = await db.execute({
+    sql: "SELECT * FROM words WHERE id = ? AND user_id = ?",
+    args: [id, userId],
+  });
+  if (!rs.rows[0]) return null;
+  const word = toWord(rs.rows[0]);
   word.box = result === "got_it" ? Math.min(MAX_BOX, word.box + 1) : MIN_BOX;
-  persist();
+  await db.execute({
+    sql: "UPDATE words SET box = ? WHERE id = ? AND user_id = ?",
+    args: [word.box, id, userId],
+  });
   return word;
 }
 
-export function recordSeen(userId: string, ids: string[]): void {
-  const words = bucket(userId).words;
+export async function recordSeen(userId: string, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const db = await getDb();
   const now = Date.now();
-  let changed = false;
-  for (const id of ids) {
-    const word = words.find((w) => w.id === id);
-    if (!word) continue;
-    word.timesSeen += 1;
-    word.lastSeenAt = now;
-    changed = true;
-  }
-  if (changed) persist();
+  await db.batch(
+    ids.map((id) => ({
+      sql: "UPDATE words SET times_seen = times_seen + 1, last_seen_at = ? WHERE id = ? AND user_id = ?",
+      args: [now, id, userId],
+    })),
+    "write",
+  );
 }
 
 // ---- Spaced repetition ----
@@ -181,9 +269,9 @@ export function wordStatus(word: Word, now = Date.now()): { isDue: boolean; dueA
   return { isDue: isDue(word, now), dueAt: dueAt(word) };
 }
 
-export function getStats(userId: string): Stats {
+export async function getStats(userId: string): Promise<Stats> {
   const now = Date.now();
-  const words = bucket(userId).words;
+  const words = await listWords(userId);
   const byBox: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   const due: Word[] = [];
   for (const w of words) {
@@ -196,22 +284,17 @@ export function getStats(userId: string): Stats {
 
 function weight(word: Word, now: number): number {
   const boxWeight = (MAX_BOX - word.box + 1) * 2;
-  let recency: number;
-  if (word.lastSeenAt === null) {
-    recency = 8;
-  } else {
-    recency = Math.min((now - word.lastSeenAt) / DAY_MS, 7);
-  }
+  const recency = word.lastSeenAt === null ? 8 : Math.min((now - word.lastSeenAt) / DAY_MS, 7);
   return boxWeight + recency + 1;
 }
 
-export function selectWordsForPassage(
+export async function selectWordsForPassage(
   userId: string,
   count: number,
   opts: { dueOnly?: boolean } = {},
-): Word[] {
+): Promise<Word[]> {
   const now = Date.now();
-  const all = bucket(userId).words;
+  const all = await listWords(userId);
   const candidates = opts.dueOnly ? all.filter((w) => isDue(w, now)) : all;
   const pool = candidates.map((w) => ({ word: w, weight: weight(w, now) }));
   const picked: Word[] = [];
@@ -231,16 +314,16 @@ export function selectWordsForPassage(
     picked.push(pool[idx].word);
     pool.splice(idx, 1);
   }
-
   return picked;
 }
 
 // ---- History ----
 
-export function addHistory(
+export async function addHistory(
   userId: string,
   data: { title: string; passage: string; glossary: GlossaryEntry[]; words: Word[] },
-): HistoryEntry {
+): Promise<HistoryEntry> {
+  const db = await getDb();
   const entry: HistoryEntry = {
     id: randomUUID(),
     title: data.title,
@@ -249,22 +332,42 @@ export function addHistory(
     words: data.words,
     createdAt: Date.now(),
   };
-  const history = bucket(userId).history;
-  history.unshift(entry);
-  if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
-  persist();
+  await db.execute({
+    sql: "INSERT INTO history (id, user_id, title, passage, glossary, words, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    args: [
+      entry.id,
+      userId,
+      entry.title,
+      entry.passage,
+      JSON.stringify(entry.glossary),
+      JSON.stringify(entry.words),
+      entry.createdAt,
+    ],
+  });
+  // Keep only the most recent MAX_HISTORY entries for this user.
+  await db.execute({
+    sql: `DELETE FROM history WHERE user_id = ? AND id NOT IN (
+            SELECT id FROM history WHERE user_id = ? ORDER BY created_at DESC LIMIT ?
+          )`,
+    args: [userId, userId, MAX_HISTORY],
+  });
   return entry;
 }
 
-export function getHistory(userId: string): HistoryEntry[] {
-  return bucket(userId).history;
+export async function getHistory(userId: string): Promise<HistoryEntry[]> {
+  const db = await getDb();
+  const rs = await db.execute({
+    sql: "SELECT * FROM history WHERE user_id = ? ORDER BY created_at DESC",
+    args: [userId],
+  });
+  return rs.rows.map(toHistory);
 }
 
-export function deleteHistory(userId: string, id: string): boolean {
-  const data = bucket(userId);
-  const before = data.history.length;
-  data.history = data.history.filter((h) => h.id !== id);
-  const removed = data.history.length < before;
-  if (removed) persist();
-  return removed;
+export async function deleteHistory(userId: string, id: string): Promise<boolean> {
+  const db = await getDb();
+  const rs = await db.execute({
+    sql: "DELETE FROM history WHERE id = ? AND user_id = ?",
+    args: [id, userId],
+  });
+  return rs.rowsAffected > 0;
 }

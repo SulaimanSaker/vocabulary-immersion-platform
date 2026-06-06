@@ -1,4 +1,5 @@
 import { config } from "dotenv";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import express from "express";
@@ -34,6 +35,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, "../../.env") });
 
 const app = express();
+app.set("trust proxy", 1); // behind Azure/other proxy: needed for secure cookies + req.protocol
 app.use(express.json());
 app.use(cookieParser());
 
@@ -59,11 +61,11 @@ app.post("/api/auth/register", async (req, res) => {
     res.status(400).json({ error: "Password must be at least 8 characters." });
     return;
   }
-  if (getUserByEmail(email)) {
+  if (await getUserByEmail(email)) {
     res.status(409).json({ error: "An account with that email already exists." });
     return;
   }
-  const user = createUser(email, await hashPassword(password));
+  const user = await createUser(email, await hashPassword(password));
   setSessionCookie(res, user.id);
   res.json({ user: { id: user.id, email: user.email } });
 });
@@ -71,7 +73,7 @@ app.post("/api/auth/register", async (req, res) => {
 app.post("/api/auth/login", async (req, res) => {
   const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
   const password = typeof req.body?.password === "string" ? req.body.password : "";
-  const user = getUserByEmail(email);
+  const user = await getUserByEmail(email);
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
     res.status(401).json({ error: "Incorrect email or password." });
     return;
@@ -85,9 +87,8 @@ app.post("/api/auth/logout", (_req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/api/auth/me", requireAuth, (req, res) => {
-  const userId = (req as AuthedRequest).userId!;
-  const user = getUserById(userId);
+app.get("/api/auth/me", requireAuth, async (req, res) => {
+  const user = await getUserById(uid(req));
   if (!user) {
     clearSessionCookie(res);
     res.status(401).json({ error: "Account no longer exists." });
@@ -98,58 +99,58 @@ app.get("/api/auth/me", requireAuth, (req, res) => {
 
 // ---- Words (all require auth) ----
 
-app.get("/api/words", requireAuth, (req, res) => {
-  res.json({ words: listWords(uid(req)) });
+app.get("/api/words", requireAuth, async (req, res) => {
+  res.json({ words: await listWords(uid(req)) });
 });
 
-app.get("/api/stats", requireAuth, (req, res) => {
-  res.json(getStats(uid(req)));
+app.get("/api/stats", requireAuth, async (req, res) => {
+  res.json(await getStats(uid(req)));
 });
 
-app.post("/api/words", requireAuth, (req, res) => {
+app.post("/api/words", requireAuth, async (req, res) => {
   const raw = typeof req.body?.text === "string" ? req.body.text : "";
   if (!raw.trim()) {
     res.status(400).json({ error: "Provide one or more words in `text`." });
     return;
   }
-  const added = addWords(uid(req), raw);
-  res.json({ added, words: listWords(uid(req)) });
+  const added = await addWords(uid(req), raw);
+  res.json({ added, words: await listWords(uid(req)) });
 });
 
-app.delete("/api/words/:id", requireAuth, (req, res) => {
-  if (!removeWord(uid(req), req.params.id)) {
+app.delete("/api/words/:id", requireAuth, async (req, res) => {
+  if (!(await removeWord(uid(req), req.params.id))) {
     res.status(404).json({ error: "Word not found." });
     return;
   }
-  res.json({ words: listWords(uid(req)) });
+  res.json({ words: await listWords(uid(req)) });
 });
 
-app.post("/api/words/:id/review", requireAuth, (req, res) => {
+app.post("/api/words/:id/review", requireAuth, async (req, res) => {
   const result = req.body?.result as ReviewResult;
   if (result !== "got_it" && result !== "still_learning") {
     res.status(400).json({ error: "`result` must be 'got_it' or 'still_learning'." });
     return;
   }
-  const word = reviewWord(uid(req), req.params.id, result);
+  const word = await reviewWord(uid(req), req.params.id, result);
   if (!word) {
     res.status(404).json({ error: "Word not found." });
     return;
   }
-  res.json({ word, words: listWords(uid(req)) });
+  res.json({ word, words: await listWords(uid(req)) });
 });
 
 // ---- History (all require auth) ----
 
-app.get("/api/history", requireAuth, (req, res) => {
-  res.json({ history: getHistory(uid(req)) });
+app.get("/api/history", requireAuth, async (req, res) => {
+  res.json({ history: await getHistory(uid(req)) });
 });
 
-app.delete("/api/history/:id", requireAuth, (req, res) => {
-  if (!deleteHistory(uid(req), req.params.id)) {
+app.delete("/api/history/:id", requireAuth, async (req, res) => {
+  if (!(await deleteHistory(uid(req), req.params.id))) {
     res.status(404).json({ error: "History entry not found." });
     return;
   }
-  res.json({ history: getHistory(uid(req)) });
+  res.json({ history: await getHistory(uid(req)) });
 });
 
 // ---- Generate (requires auth + the caller's own Gemini key) ----
@@ -179,13 +180,13 @@ app.post("/api/generate", requireAuth, async (req, res) => {
     // Explicit selection wins; otherwise fall back to spaced-repetition pick.
     let selected;
     if (wordIds.length > 0) {
-      selected = getWordsByIds(userId, wordIds);
+      selected = await getWordsByIds(userId, wordIds);
       if (selected.length === 0) {
         res.status(400).json({ error: "None of the selected words were found." });
         return;
       }
     } else {
-      selected = selectWordsForPassage(userId, count, { dueOnly });
+      selected = await selectWordsForPassage(userId, count, { dueOnly });
       if (selected.length === 0) {
         res.status(400).json({
           error: dueOnly ? "No words are due for review right now." : "Add some words first.",
@@ -200,9 +201,9 @@ app.post("/api/generate", requireAuth, async (req, res) => {
       { difficulty, length, theme, format, customType },
     );
 
-    recordSeen(userId, selected.map((w) => w.id));
+    await recordSeen(userId, selected.map((w) => w.id));
 
-    const entry = addHistory(userId, {
+    const entry = await addHistory(userId, {
       title: passage.title,
       passage: passage.passage,
       glossary: passage.glossary,
@@ -220,6 +221,18 @@ app.post("/api/generate", requireAuth, async (req, res) => {
     });
   }
 });
+
+// ---- Serve the built React client (single-service deploy) ----
+
+const clientDist = resolve(__dirname, "../../client/dist");
+if (existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  // SPA fallback for non-API routes.
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api/")) return next();
+    res.sendFile(resolve(clientDist, "index.html"));
+  });
+}
 
 function uid(req: express.Request): string {
   return (req as AuthedRequest).userId!;

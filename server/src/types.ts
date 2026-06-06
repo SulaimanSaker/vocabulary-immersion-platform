@@ -26,17 +26,6 @@ export interface User {
   createdAt: number;
 }
 
-export interface UserData {
-  words: Word[];
-  history: HistoryEntry[];
-}
-
-export interface Database {
-  users: User[];
-  /** Per-user words + history, keyed by user id. */
-  data: Record<string, UserData>;
-}
-
 export interface Stats {
   total: number;
   byBox: Record<number, number>;
