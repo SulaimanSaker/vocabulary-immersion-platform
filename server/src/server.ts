@@ -9,6 +9,7 @@ import {
   deleteHistory,
   getHistory,
   getStats,
+  getWordsByIds,
   listWords,
   recordSeen,
   removeWord,
@@ -99,13 +100,26 @@ app.post("/api/generate", async (req, res) => {
     const length: Length = LENGTHS.includes(req.body?.length) ? req.body.length : "medium";
     const theme = typeof req.body?.theme === "string" ? req.body.theme : undefined;
     const dueOnly = req.body?.dueOnly === true;
+    const wordIds: string[] = Array.isArray(req.body?.wordIds)
+      ? req.body.wordIds.filter((x: unknown): x is string => typeof x === "string")
+      : [];
 
-    const selected = selectWordsForPassage(count, { dueOnly });
-    if (selected.length === 0) {
-      res.status(400).json({
-        error: dueOnly ? "No words are due for review right now." : "Add some words first.",
-      });
-      return;
+    // Explicit selection wins; otherwise fall back to spaced-repetition pick.
+    let selected;
+    if (wordIds.length > 0) {
+      selected = getWordsByIds(wordIds);
+      if (selected.length === 0) {
+        res.status(400).json({ error: "None of the selected words were found." });
+        return;
+      }
+    } else {
+      selected = selectWordsForPassage(count, { dueOnly });
+      if (selected.length === 0) {
+        res.status(400).json({
+          error: dueOnly ? "No words are due for review right now." : "Add some words first.",
+        });
+        return;
+      }
     }
 
     const passage = await generatePassage(

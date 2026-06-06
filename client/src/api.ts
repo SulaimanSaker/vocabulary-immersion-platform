@@ -46,9 +46,9 @@ export function reviewWord(id: string, result: ReviewResult) {
   });
 }
 
-export function generatePassage(opts: GenerateOptions, dueOnly = false) {
+export function generatePassage(opts: GenerateOptions, dueOnly = false, wordIds: string[] = []) {
   return request<Passage>("/api/generate", {
     method: "POST",
-    body: JSON.stringify({ ...opts, dueOnly }),
+    body: JSON.stringify({ ...opts, dueOnly, wordIds }),
   });
 }

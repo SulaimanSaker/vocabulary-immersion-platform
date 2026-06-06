@@ -15,6 +15,8 @@ glossary, and **spaced repetition** so the words you struggle with come back mor
   haven't seen in a while are weighted heavily when choosing what goes into the next
   passage. After reading you mark each word **Got it** (box up) or **Still learning**
   (back to box 1).
+- **Pick your words** — check specific words in the list to force them into the next
+  passage; with nothing checked it auto-selects by spaced repetition.
 
 ## Project layout
 

@@ -88,6 +88,22 @@ export function removeWord(id: string): boolean {
   return removed;
 }
 
+/** Resolve a list of word ids to Word objects, preserving order and skipping unknown/duplicate ids. */
+export function getWordsByIds(ids: string[]): Word[] {
+  const byId = new Map(db.words.map((w) => [w.id, w]));
+  const seen = new Set<string>();
+  const result: Word[] = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    const word = byId.get(id);
+    if (word) {
+      result.push(word);
+      seen.add(id);
+    }
+  }
+  return result;
+}
+
 export function reviewWord(id: string, result: ReviewResult): Word | null {
   const word = db.words.find((w) => w.id === id);
   if (!word) return null;

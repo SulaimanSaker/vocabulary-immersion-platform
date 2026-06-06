@@ -4,13 +4,26 @@ import type { Word } from "../types";
 interface Props {
   words: Word[];
   dueIds: Set<string>;
+  selected: Set<string>;
+  onToggle: (id: string) => void;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
   onAdd: (text: string) => Promise<void>;
   onDelete: (id: string) => void;
 }
 
 const BOX_LABELS = ["", "new", "learning", "familiar", "strong", "mastered"];
 
-export function WordList({ words, dueIds, onAdd, onDelete }: Props) {
+export function WordList({
+  words,
+  dueIds,
+  selected,
+  onToggle,
+  onSelectAll,
+  onClearSelection,
+  onAdd,
+  onDelete,
+}: Props) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -45,11 +58,30 @@ export function WordList({ words, dueIds, onAdd, onDelete }: Props) {
       {words.length === 0 ? (
         <p className="empty">No words yet. Add a few to get started.</p>
       ) : (
-        <ul className="words">
-          {words.map((w) => (
-            <li key={w.id} className={dueIds.has(w.id) ? "due" : ""}>
-              {dueIds.has(w.id) && <span className="due-dot" title="Due for review" />}
-              <span className="word-text">{w.text}</span>
+        <>
+          <div className="select-bar">
+            <span>
+              {selected.size > 0 ? `${selected.size} selected for next passage` : "Pick words, or let it choose"}
+            </span>
+            <span className="select-actions">
+              <button onClick={onSelectAll}>All</button>
+              <button onClick={onClearSelection} disabled={selected.size === 0}>
+                None
+              </button>
+            </span>
+          </div>
+          <ul className="words">
+            {words.map((w) => (
+              <li key={w.id} className={dueIds.has(w.id) ? "due" : ""}>
+                <input
+                  type="checkbox"
+                  className="word-check"
+                  checked={selected.has(w.id)}
+                  onChange={() => onToggle(w.id)}
+                  aria-label={`Include ${w.text} in the next passage`}
+                />
+                {dueIds.has(w.id) && <span className="due-dot" title="Due for review" />}
+                <span className="word-text">{w.text}</span>
               <span className={`box box-${w.box}`} title={`Seen ${w.timesSeen}×`}>
                 {BOX_LABELS[w.box]}
               </span>
@@ -63,7 +95,8 @@ export function WordList({ words, dueIds, onAdd, onDelete }: Props) {
               </button>
             </li>
           ))}
-        </ul>
+          </ul>
+        </>
       )}
     </aside>
   );

@@ -6,12 +6,21 @@ interface Props {
   onGenerate: () => void;
   loading: boolean;
   disabled: boolean;
+  selectedCount: number;
 }
 
 const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
 const LENGTHS: Length[] = ["short", "medium", "long"];
 
-export function Controls({ opts, onChange, onGenerate, loading, disabled }: Props) {
+export function Controls({
+  opts,
+  onChange,
+  onGenerate,
+  loading,
+  disabled,
+  selectedCount,
+}: Props) {
+  const usingSelection = selectedCount > 0;
   return (
     <div className="controls">
       <div className="controls-row">
@@ -22,6 +31,8 @@ export function Controls({ opts, onChange, onGenerate, loading, disabled }: Prop
             min={1}
             max={15}
             value={opts.count}
+            disabled={usingSelection}
+            title={usingSelection ? "Ignored while you have words selected" : undefined}
             onChange={(e) => onChange({ ...opts, count: Number(e.target.value) })}
           />
         </label>
@@ -66,7 +77,11 @@ export function Controls({ opts, onChange, onGenerate, loading, disabled }: Prop
       </label>
 
       <button className="generate" onClick={onGenerate} disabled={loading || disabled}>
-        {loading ? "Writing…" : "Generate passage"}
+        {loading
+          ? "Writing…"
+          : usingSelection
+            ? `Generate with ${selectedCount} selected word${selectedCount === 1 ? "" : "s"}`
+            : "Generate passage"}
       </button>
     </div>
   );

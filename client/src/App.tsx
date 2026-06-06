@@ -20,6 +20,7 @@ export default function App() {
   const [words, setWords] = useState<Word[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [history, setHistory] = useState<Passage[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [opts, setOpts] = useState<GenerateOptions>(DEFAULT_OPTS);
   const [passage, setPassage] = useState<Passage | null>(null);
   const [view, setView] = useState<View>("read");
@@ -31,6 +32,25 @@ export default function App() {
     setWords(w.words);
     setStats(s);
     setHistory(h.history);
+    // Drop any selected ids that no longer exist.
+    const ids = new Set(w.words.map((x) => x.id));
+    setSelected((prev) => new Set([...prev].filter((id) => ids.has(id))));
+  }
+
+  function toggleWord(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelected(new Set(words.map((w) => w.id)));
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
   }
 
   useEffect(() => {
@@ -51,7 +71,9 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      const result = await api.generatePassage(opts, dueOnly);
+      // Study-due ignores manual selection; normal generate uses it (if any).
+      const wordIds = dueOnly ? [] : Array.from(selected);
+      const result = await api.generatePassage(opts, dueOnly, wordIds);
       setPassage(result);
       setView("read");
       await refresh();
@@ -87,7 +109,16 @@ export default function App() {
       </header>
 
       <div className="layout">
-        <WordList words={words} dueIds={dueIds} onAdd={handleAdd} onDelete={handleDelete} />
+        <WordList
+          words={words}
+          dueIds={dueIds}
+          selected={selected}
+          onToggle={toggleWord}
+          onSelectAll={selectAll}
+          onClearSelection={clearSelection}
+          onAdd={handleAdd}
+          onDelete={handleDelete}
+        />
 
         <main className="reader">
           <nav className="tabs">
@@ -117,6 +148,7 @@ export default function App() {
                 onGenerate={() => runGenerate(false)}
                 loading={loading}
                 disabled={words.length === 0}
+                selectedCount={selected.size}
               />
 
               {error && <div className="error">{error}</div>}
