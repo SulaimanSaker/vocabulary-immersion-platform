@@ -2,7 +2,7 @@ import { config } from "dotenv";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import express from "express";
-import { generatePassage } from "./gemini.js";
+import { generatePassage, QuotaError } from "./gemini.js";
 import {
   addHistory,
   addWords,
@@ -141,6 +141,10 @@ app.post("/api/generate", async (req, res) => {
     });
     res.json(entry);
   } catch (err) {
+    if (err instanceof QuotaError) {
+      res.status(429).json({ error: err.message, retryAfterSeconds: err.retryAfterSeconds });
+      return;
+    }
     console.error("Generation failed:", err);
     res.status(502).json({
       error: err instanceof Error ? err.message : "Failed to generate a passage.",

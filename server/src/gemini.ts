@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GenerateContentResponse, GoogleGenAI, Type } from "@google/genai";
 import type {
   Difficulty,
   GenerateOptions,
@@ -7,7 +7,19 @@ import type {
   TextFormat,
 } from "./types.js";
 
-const MODEL = "gemini-2.5-flash";
+// Default model; override with the GEMINI_MODEL env var. flash-lite has a more
+// generous free-tier daily limit; flash is a bit higher quality but a smaller free quota.
+const DEFAULT_MODEL = "gemini-2.5-flash-lite";
+
+/** Thrown when the API rejects us due to free-tier / quota (rate) limits. */
+export class QuotaError extends Error {
+  retryAfterSeconds?: number;
+  constructor(message: string, retryAfterSeconds?: number) {
+    super(message);
+    this.name = "QuotaError";
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
 
 let _ai: GoogleGenAI | null = null;
 function getClient(): GoogleGenAI {
@@ -119,16 +131,37 @@ Reading level: ${DIFFICULTY_GUIDANCE[opts.difficulty]}.
 
 Write it now.`;
 
-  const response = await getClient().models.generateContent({
-    model: MODEL,
-    contents: userPrompt,
-    config: {
-      systemInstruction: SYSTEM_PROMPT,
-      responseMimeType: "application/json",
-      responseSchema: RESPONSE_SCHEMA,
-      maxOutputTokens: 2048,
-    },
-  });
+  const model = process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
+
+  let response: GenerateContentResponse;
+  try {
+    response = await getClient().models.generateContent({
+      model,
+      contents: userPrompt,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        responseMimeType: "application/json",
+        responseSchema: RESPONSE_SCHEMA,
+        maxOutputTokens: 2048,
+      },
+    });
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err);
+    if (/RESOURCE_EXHAUSTED|\b429\b|quota/i.test(raw)) {
+      const m =
+        raw.match(/retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s/) ?? raw.match(/retry in ([\d.]+)s/i);
+      const secs = m ? Math.ceil(Number(m[1])) : undefined;
+      throw new QuotaError(
+        `You've hit the free Gemini limit for "${model}". ` +
+          (secs
+            ? `Try again in about ${secs}s. `
+            : "The free quota resets daily — try again later. ") +
+          "You can switch models with GEMINI_MODEL, or enable billing for higher limits.",
+        secs,
+      );
+    }
+    throw err;
+  }
 
   const text = response.text;
   if (!text) {

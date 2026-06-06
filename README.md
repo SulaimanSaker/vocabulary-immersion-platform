@@ -4,8 +4,9 @@ Feed it English words you want to remember. Gemini keeps writing fresh, engaging
 passages that weave those words in naturally — with the target words highlighted, a
 glossary, and **spaced repetition** so the words you struggle with come back more often.
 
-- **Backend** — Node + Express + Google's Gemini API (`gemini-2.5-flash`, free tier), words
-  and review state stored in a local `data.json` (no database to set up).
+- **Backend** — Node + Express + Google's Gemini API (`gemini-2.5-flash-lite` by default,
+  free tier; set `GEMINI_MODEL` to change it), words and review state stored in a local
+  `data.json` (no database to set up).
 - **Frontend** — React + TypeScript + Vite.
 - **Listen** — each passage has a 🔊 player (Listen / Pause / Stop, speed and voice controls).
   It uses the browser's built-in speech synthesis, so it's free and makes no API calls.
@@ -83,10 +84,12 @@ npm start          # runs the API (serve client/dist with any static host)
 
 ## Notes
 
-- Generation uses `gemini-2.5-flash` with a JSON response schema, so the passage + glossary
-  come back as structured JSON. Adjust the model, length, or prompt in
+- Generation uses Gemini with a JSON response schema, so the passage + glossary come back as
+  structured JSON. The model defaults to `gemini-2.5-flash-lite` and is set via the
+  `GEMINI_MODEL` env var; adjust the length or prompt in
   [`server/src/gemini.ts`](server/src/gemini.ts).
-- The free Gemini tier has generous per-minute/per-day limits that are plenty for personal
-  study. If you hit a limit, you'll see an error — just wait a bit and try again.
+- The free Gemini tier has a limited number of requests per day (varies by model). If you hit
+  it, the app shows a friendly message — wait for the daily reset, switch `GEMINI_MODEL` to a
+  model with more free headroom, or enable billing for higher limits.
 - All state is a single `data.json` at the repo root — delete it to start fresh.
 ```
